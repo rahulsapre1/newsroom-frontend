@@ -9,6 +9,52 @@ alwaysApply: false
 - The app can also call an API to get the relevant news topics.
 
 # Tech Stack
+- Framework: Next.js with App Router
+- UI Components: Shadcn UI
+- Data Fetching: SWR
+- Authentication: Supabase Auth
+- Database: Supabase
+- State Management: React Context + SWR + Local State
+- Functional Backend: We also have an external Rest API backend for specific functional API calls
+
+# API to Register User
+curl --location '//api/v1/users' \
+--header 'Content-Type: application/json' \
+--header 'Accept: application/json' \
+--data '{
+  "mobile_number": "9876543210",
+  "topics_of_interest": [
+    "technology",
+    "sports",
+    "politics"
+  ]
+}'
+
+# API to get new summary for a user
+curl --location '//api/v1/users/5898245888/summaries' \
+--header 'Accept: application/json'
+
+# API to update user topic interest
+curl --location --request PUT '//api/v1/users/in sint ipsum/topics' \
+--header 'Content-Type: application/json' \
+--header 'Accept: application/json' \
+--data '{
+  "topics_of_interest": [
+    "technology",
+    "sports",
+    "politics"
+  ]
+}'
+
+# API to summarise news
+curl --location '//api/v1/news/summarize' \
+--header 'Content-Type: application/json' \
+--header 'Accept: application/json' \
+--data '{
+  "topic": "artificial intelligence",
+  "time_period": "1d",
+  "max_articles": 3
+}'
 
 # Directory Structure
 

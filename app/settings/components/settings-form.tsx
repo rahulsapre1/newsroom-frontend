@@ -18,7 +18,12 @@ import {
 import { TopicSelector } from "./topic-selector"
 import { SettingsLoading } from "./loading"
 
-const API_BASE_URL = "http://localhost:8080"
+if (!process.env.NEXT_PUBLIC_API_URL) {
+  throw new Error('NEXT_PUBLIC_API_URL environment variable is not set')
+}
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
+console.log('API URL:', API_BASE_URL) // Log the API URL for debugging
 
 const formSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -51,39 +56,61 @@ export function SettingsForm() {
       // Convert topics string to array
       const topicsArray = data.topics.split(",").map(topic => topic.trim()).filter(Boolean)
       
+      const requestBody = {
+        mobile_number: data.mobileNumber,
+        name: data.name,
+        topics_of_interest: topicsArray
+      }
+      
       // Create/update user with all details
-      console.log("Creating/updating user...")
+      console.log("Creating/updating user with request:", requestBody)
+      console.log("Sending request to:", `${API_BASE_URL}/api/v1/users`)
+      
       const userResponse = await fetch(`${API_BASE_URL}/api/v1/users`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Accept": "application/json"
         },
-        body: JSON.stringify({
-          mobile_number: data.mobileNumber,
-          name: data.name,
-          topics_of_interest: topicsArray
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       console.log("User API Response status:", userResponse.status)
+      console.log("User API Response headers:", Object.fromEntries(userResponse.headers.entries()))
+      
       let userResponseData
+      let responseText
       try {
-        userResponseData = await userResponse.json()
-        console.log("User API Response data:", userResponseData)
-      } catch {
-        console.log("Failed to parse user response as JSON:", await userResponse.text())
-        throw new Error("Invalid response from server")
+        responseText = await userResponse.text()
+        console.log("Raw response text:", responseText)
+        
+        if (responseText) {
+          userResponseData = JSON.parse(responseText)
+          console.log("Parsed response data:", userResponseData)
+        } else {
+          console.log("Empty response received")
+          throw new Error("Empty response from server")
+        }
+      } catch (parseError) {
+        console.error("Failed to parse response:", parseError)
+        console.log("Response text was:", responseText)
+        throw new Error("Invalid response format from server")
       }
 
       if (!userResponse.ok) {
-        throw new Error(userResponseData.error || "Failed to update user details")
+        const errorMessage = userResponseData?.error || userResponseData?.message || "Failed to update user details"
+        console.error("API error:", errorMessage)
+        throw new Error(errorMessage)
       }
 
       toast.success("Settings updated successfully")
     } catch (error) {
       console.error("Full error details:", error)
-      toast.error(error instanceof Error ? error.message : "Failed to update settings")
+      if (error instanceof Error) {
+        toast.error(error.message)
+      } else {
+        toast.error("An unexpected error occurred while updating settings")
+      }
     } finally {
       setIsLoading(false)
     }
