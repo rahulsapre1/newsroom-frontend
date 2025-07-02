@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -26,7 +26,6 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
 console.log('API URL:', API_BASE_URL) // Log the API URL for debugging
 
 const formSchema = z.object({
-  name: z.string().min(1, "Name is required"),
   mobileNumber: z.string()
     .min(10, "Mobile number must be at least 10 digits")
     .max(10, "Mobile number must not exceed 10 digits")
@@ -38,11 +37,18 @@ type FormData = z.infer<typeof formSchema>
 
 export function SettingsForm() {
   const [isLoading, setIsLoading] = useState(false)
+  const [apiUrl, setApiUrl] = useState<string>('')
+
+  // Log API URL when component mounts
+  useEffect(() => {
+    const url = process.env.NEXT_PUBLIC_API_URL
+    console.log('Current API URL:', url)
+    setApiUrl(url || '')
+  }, [])
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      name: "",
       mobileNumber: "",
       topics: "",
     },
@@ -53,64 +59,89 @@ export function SettingsForm() {
       setIsLoading(true)
       console.log("Submitting form with data:", data)
       
+      if (!apiUrl) {
+        throw new Error("API URL is not configured. Please check your environment variables.")
+      }
+
       // Convert topics string to array
       const topicsArray = data.topics.split(",").map(topic => topic.trim()).filter(Boolean)
       
       const requestBody = {
         mobile_number: data.mobileNumber,
-        name: data.name,
         topics_of_interest: topicsArray
       }
       
       // Create/update user with all details
-      console.log("Creating/updating user with request:", requestBody)
-      console.log("Sending request to:", `${API_BASE_URL}/api/v1/users`)
-      
-      const userResponse = await fetch(`${API_BASE_URL}/api/v1/users`, {
-        method: "POST",
+      const endpoint = `${apiUrl}/api/v1/users`
+      console.log("Creating/updating user with request:", {
+        url: endpoint,
+        method: 'POST',
         headers: {
           "Content-Type": "application/json",
           "Accept": "application/json"
         },
-        body: JSON.stringify(requestBody),
+        body: requestBody
       })
-
-      console.log("User API Response status:", userResponse.status)
-      console.log("User API Response headers:", Object.fromEntries(userResponse.headers.entries()))
       
-      let userResponseData
-      let responseText
       try {
-        responseText = await userResponse.text()
-        console.log("Raw response text:", responseText)
+        // First try an OPTIONS request
+        console.log("Sending OPTIONS request to check CORS...")
+        const optionsResponse = await fetch(endpoint, {
+          method: "OPTIONS",
+          headers: {
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type,accept",
+            "Origin": window.location.origin
+          }
+        })
+        console.log("OPTIONS response:", {
+          status: optionsResponse.status,
+          headers: Object.fromEntries(optionsResponse.headers.entries())
+        })
+
+        // Then send the actual POST request
+        console.log("Sending POST request...")
+        const userResponse = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
+          body: JSON.stringify(requestBody),
+        })
+
+        console.log("POST response:", {
+          status: userResponse.status,
+          headers: Object.fromEntries(userResponse.headers.entries())
+        })
         
-        if (responseText) {
-          userResponseData = JSON.parse(responseText)
-          console.log("Parsed response data:", userResponseData)
-        } else {
-          console.log("Empty response received")
-          throw new Error("Empty response from server")
+        if (!userResponse.ok) {
+          const errorData = await userResponse.json().catch(() => null)
+          console.error("Error response data:", errorData)
+          const errorMessage = errorData?.detail || errorData?.message || `Server error: ${userResponse.status}`
+          throw new Error(errorMessage)
         }
-      } catch (parseError) {
-        console.error("Failed to parse response:", parseError)
-        console.log("Response text was:", responseText)
-        throw new Error("Invalid response format from server")
+
+        const responseData = await userResponse.json()
+        console.log("Success response:", responseData)
+        toast.success("Settings updated successfully")
+
+      } catch (fetchError: any) {
+        console.error("Fetch error details:", {
+          name: fetchError.name,
+          message: fetchError.message,
+          cause: fetchError.cause
+        })
+        
+        if (fetchError instanceof TypeError && fetchError.message.includes('Failed to fetch')) {
+          throw new Error(`Unable to connect to ${apiUrl}. Please check your internet connection and API URL.`)
+        }
+        throw fetchError
       }
 
-      if (!userResponse.ok) {
-        const errorMessage = userResponseData?.error || userResponseData?.message || "Failed to update user details"
-        console.error("API error:", errorMessage)
-        throw new Error(errorMessage)
-      }
-
-      toast.success("Settings updated successfully")
     } catch (error) {
-      console.error("Full error details:", error)
-      if (error instanceof Error) {
-        toast.error(error.message)
-      } else {
-        toast.error("An unexpected error occurred while updating settings")
-      }
+      console.error("Form submission error:", error)
+      toast.error(error instanceof Error ? error.message : "An unexpected error occurred")
     } finally {
       setIsLoading(false)
     }
@@ -123,20 +154,6 @@ export function SettingsForm() {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <FormField
-          control={form.control}
-          name="name"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Name</FormLabel>
-              <FormControl>
-                <Input placeholder="Enter your name" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
         <FormField
           control={form.control}
           name="mobileNumber"
